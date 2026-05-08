@@ -1,0 +1,123 @@
+# TIP4P/2005 water model
+
+echo            both
+units           real # m=g/mol, d=Ang, t=fs, E=Kcal/mol, T=K, P=atm, Dynamic viscoty=Poise, charge=e (negative=-)
+                #
+
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+boundary	p p f
+
+
+pair_style    lj/cut/coul/long 8 8
+read_data       data_eq.lmp                                                       #
+
+pair_coeff      1   1   	0.0000   0.0000    	# No LJ between H-H
+pair_coeff      2   2   	0.1553   3.1660 	# LJ epsilon and LJ sigma betweenO-O
+pair_coeff      1   2   	0.0000   0.0000  	# No LJ between H-O
+pair_coeff      3   3     5.2900   2.951
+pair_coeff      1   3   	0.0000   0.0000
+pair_coeff      2   3     0.9064   3.0585
+pair_coeff      4   4     5.2900   2.951
+pair_coeff      1   4   	0.0000   0.0000
+pair_coeff      2   4     0.9064   3.0585
+pair_coeff      3   4   	0.0000   0.0000
+
+pair_modify     shift yes	# determines whether a Lennard-Jones potential is shiftedat its cutoff to 0.0
+
+group		Oxigen type 2
+group		Hydrogen type 1
+group   Gold1 type 3
+group   Gold2 type 4
+group   spce type 1:2
+group   Gold type 3:4
+
+kspace_style  pppm/electrode 1e-4
+kspace_modify	slab 3.0
+fix fRattleSPCE spce shake 0.0001 10 0 b 1 a 1
+#minimize 1.0e-4 1.0e-6 10 100
+reset_timestep 0
+
+
+#thermo          200000 #output thermodynamics every N timesteps
+thermo          10
+thermo_style    custom pxx pyy #Set the style and content for printing thermodynamic data to the screen and log file.
+#---------------------------------------------Forces
+variable        eps equal 0.3
+variable        sig5 equal 2.49895
+
+variable        s6 equal -7.7663
+variable        d6 equal 15.76631
+variable        forcex6 atom "12*v_eps*((3/(x+v_s6))*(v_sig5/(x+v_s6))^9-(1/(x+v_s6))*(v_sig5/(x+v_s6))^3-(3/(x-v_d6))*(v_sig5/(x-v_d6))^9+(1/(x-v_d6))*(v_sig5/(x-v_d6))^3)"
+variable        potenergy6 atom "4*v_eps*((v_sig5/(z+v_s6))^9-(v_sig5/(z+v_s6))^3-(v_sig5/(z-v_d6))^9+(v_sig5/(z-v_d6))^3)"
+
+
+
+#---------------------------------------------Equilibration And Thermalization
+fix fxforce_au Gold setforce 0.0 0.0 0.0
+
+
+
+fix		5 all momentum 2000 linear 0 1 1 # Total momentum=0
+
+
+#thermo          100000 #output thermodynamics every N timesteps
+thermo		10000
+thermo_style    custom step time cpu etotal ke pe ebond eangle evdwl ecoul elong press vol density #Set the style and content for printing thermodynamic data to the screen and log file.
+set		group all image 0 0 0
+
+fix             21 Oxigen addforce v_forcex6 0.0 0.0 #energy v_potenergy6
+
+variable 	v equal 0.0
+fix 		conp Gold1 electrode/conp 0 1.979 couple Gold2 v_v symm on
+
+variable        T equal 600
+timestep        1.0
+fix             6 spce nvt temp $T  $T 1000
+run		100000
+run		225000
+
+reset_timestep 0
+unfix		6
+
+variable        T equal 300
+timestep        1.0
+fix             6 spce nvt temp $T  $T 1000
+
+
+run		10000
+run		990000
+
+
+
+dump            2 spce custom 1000 H2O_prod_10ns.lmp element x y z q
+dump_modify     2 element H O Au Au
+dump_modify	2 sort id
+
+
+dump            3 Gold custom 1000 GOLD_prod_10ns.lmp element x y z q
+dump_modify     3 element H O Au Au
+dump_modify     3 sort id
+
+variable nblocks equal 10000000/10000   # = 1000 bloques
+variable i loop ${nblocks}
+
+label write_loop
+  run 10000
+
+  # Nombre en ps: 10 ps por cada 10000 pasos (ajústalo si tu dt difiere)
+  variable ps equal ${i}*10
+  write_data data_prod_${ps}ps.data
+
+  # A partir del segundo bloque, borra el anterior
+  if "${i} > 1" then "variable prev equal ${ps}-10"
+  if "${i} > 1" then "shell rm -f data_prod_${prev}ps.data"
+
+  next i
+jump SELF write_loop
+
+# --- Cierre como tenías ---
+undump          2
+undump          3
+write_data      data_prod_10ns.lmp
