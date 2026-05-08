@@ -1,0 +1,76 @@
+# TIP4P/2005 water model
+
+echo            both
+units           real # m=g/mol, d=Ang, t=fs, E=Kcal/mol, T=K, P=atm, Dynamic viscoty=Poise, charge=e (negative=-)
+                #
+
+atom_style      full
+bond_style      harmonic
+angle_style     harmonic
+boundary	p p f
+
+
+pair_style      lj/cut/tip4p/long 2 1 1 1 0.1546 12 8.5 # O type, H type, bond type, angle type, distance between O and massless charge,
+read_data       data_eq_10ns.lmp                                                        # global cutoff for LJ, global cutoff for Coulombic.
+
+pair_coeff      1   1   	0.0000   0.0000    	# No LJ between H-H
+pair_coeff      2   2   	0.1852   3.1589 	# LJ epsilon and LJ sigma between O-O
+pair_coeff      1   2   	0.0000   0.0000  	# No LJ between H-O
+pair_modify     shift yes	# determines whether a Lennard-Jones potential is shifted at its cutoff to 0.0
+
+group		Oxigen type 2
+group		Hydrogen type 1
+
+
+kspace_style    pppm/tip4p 1.0e-5 # particle-particle distantzia motzetan, particle-mesh distantzia handitan
+			  # fourier transformatuak erabiliz
+kspace_modify	slab 3.0
+special_bonds   charmm
+thermo          200000 #output thermodynamics every N timesteps
+thermo_style    custom pxx pyy #Set the style and content for printing thermodynamic data to the screen and log file. 
+#---------------------------------------------Forces
+variable        eps equal 0.3
+variable        sig5 equal 2.49895
+variable	s1 equal 0.0
+variable	d1 equal 8.0
+variable        forcez1 atom "12*v_eps*((3/(z+v_s1))*(v_sig5/(z+v_s1))^9-(1/(z+v_s1))*(v_sig5/(z+v_s1))^3-(3/(z-v_d1))*(v_sig5/(z-v_d1))^9+(1/(z-v_d1))*(v_sig5/(z-v_d1))^3)"
+variable        potenergy1 atom "4*v_eps*((v_sig5/(z+v_s1))^9-(v_sig5/(z+v_s1))^3-(v_sig5/(z-v_d1))^9+(v_sig5/(z-v_d1))^3)"
+#---------------------------------------------Equilibration And Thermalization
+variable        T equal 300
+fix		1 all shake 0.000001 200 0 b 1 a 1 # fix etiketa, group-ID, shake, shake tolerance, max # of
+						   # iterations, step print, bonds, type 1, angle, type 1 
+timestep        1
+fix             6 all nvt temp $T  $T 1000
+fix		5 all momentum 2000 linear 1 1 0 # Total momentum=0
+fix             16 Oxigen addforce 0.0 0.0 v_forcez1 energy v_potenergy1
+
+thermo          100000 #output thermodynamics every N timesteps
+thermo_style    custom step time cpu etotal ke pe ebond eangle evdwl ecoul elong &
+  press vol density #Set the style and content for printing thermodynamic data to the screen and log file. 
+set		group all image 0 0 0
+
+dump            2 all custom 500 H2O_prod_100ns.lmp element x y z q
+dump_modify     2 element H O sort id
+run             10000000
+write_data      data_prod_10ns.lmp
+run             10000000
+write_data      data_prod_20ns.lmp
+run             10000000
+write_data      data_prod_30ns.lmp
+run             10000000
+write_data      data_prod_40ns.lmp
+run             10000000
+write_data      data_prod_50ns.lmp
+run             10000000
+write_data      data_prod_60ns.lmp
+run             10000000
+write_data      data_prod_70ns.lmp
+run             10000000
+write_data      data_prod_80ns.lmp
+run             10000000
+write_data      data_prod_90ns.lmp
+run             10000000
+write_data      data_prod_100ns.lmp
+undump          2
+write_data      data_prod_100ns.lmp
+
